@@ -1,0 +1,191 @@
+#+title:Emacs设置与包使用基础
+#+author: YukikazeQED
+#+date: 2024-03-14
+#+description: 本文是关于Emacs的设置知识和包使用的初步教程, 最后以安装Emacs主题和必要的补全插件作为结尾
+* Emacs-Lisp基础知识
+使用 =C-h k key RET= 你会发现许多快捷键实际上是调用一个 =.el= 文件的Lisp函数(如 =C-x C-b=, =C-v=等), 也有部分是C语言的函数. 
+
+如果你学习/接触过任何Lisp方言尤其是 Common Lisp 类, 那么你接受本节内容就会很快. 反之, 你仔细学习本节基础知识. 为了简单, Emacs-Lisp我们简称elisp.
+
+接下来我会极简介绍最基本的Emacs-Lisp知识, 以便读者可以读懂大部分网络上别人提供的配置, 从网络中搜索别人的配置代码是每一个Emacs新手必然会经过的一个阶段. 一些相比之下更深入的Emacs-Lisp教程资源我展示如下:
+1. [[smacs.github.io/elisp/][水木社区Emacs版]]
+2. [[http://xahlee.info/emacs/emacs/elisp.html][xahlee的Emacs教程]]
+3. [[https://www.gnu.org/software/emacs/manual/html_node/elisp/index.html][Emacs官方Manual]]
+** 运行你的第一个Emacs-Lisp程序
+***  S-expression
+#+begin_example
+C-x b *scratch* RET
+#+end_example
+切换buffer, 这是一个运行Emacs-Lisp的类似REPL的buffer, 现在我们来用elisp进行四则运算. 现在在这个buffer中输入如下代码. 
+#+begin_src emacs-lisp
+(+ 1 2)
+#+end_src
+然后按下 =C-j= 你会在下一行看到演算结果. 这个最简单的例子反映了Lisp语言的最出名的特征--使用 *S表达式(S-expression)* . 在这里没有运算符的概念, =+= 是一个预设的函数, 表示对后面的入参进行求和, 例如 =(+ 1 2 3)= 实际上是 =((1+2)+3)= , 这称为左结合, 而单参数 =(+ 2)= 表示 =(0 + 2)=, =(+)= 结果为 =0=. 对于减法也是如此, =(- 3 2 1)= 表示 =((3-2)-1)= elisp中也没有"负字面量", 如果你想要表达负数-3, 需要使用 =(- 3)= . 其余运算同理. 没有负字面量不奇怪, 在C语言中语义上也没有负字面量. 
+*** elisp与Emacs的强相关
+运行 =(message "Hello World")= 注意观察mini buffer. 这个函数会在mini buffer中输出内容. elisp提供了大量和emacs交互的设施, 这使得elisp和emacs强相关. 这种强相关使得elisp虽然有通用计算的潜力, 但主要是为emacs服务. 与vim插件开发包容除vimscript的其他语言, emacs插件开发基本是纯elisp. 当然elisp和其他语言交互也是可以的.
+*** 变量声明与赋值
+**** 全局变量
+#+begin_src emacs-lisp
+  ;;; setq 可以声明一个全局变量并赋值为给定值或为一个已经存在的变量重新赋值为给定的值
+  ;;; 语法如下
+  ;;; (setq <SYM> <VAL>)
+  ;;; (setq <SYM1> <VAL1> <SYM2> <VAL2> <etc>)
+  (setq foo1 1 foo2 2)
+  (message foo1)
+
+#+end_src
+*在elisp中每个括号组成的表达式都有返回值*, 对于 =setq= 它的返回值是最后一个 =<VAL>= . =(setq x 3)= 实际上是 =(set (quote x) 3)= 的简写, =(quote expr)= 指示不要演算表达式expr, 详情见 [[https://www.gnu.org/software/emacs/manual/html_node/elisp/Quoting.html]] , 对于初学者来说这个不重要, 知道有这回事就可以.
+
+=setq= 是最常见到的 emacs 配置语句, 因为大多数时候, 你只需要为 emacs 预设的变量或包预设的变量重新设置一个值. 这类似于大部分vscode插件的配置, 但在vscode只能对插件作者给定的选项赋值, 并以json文件的形式储存. 但emacs和vim自带一门语言(vim是vimscript)来和软件交互, 在自由度上更高.
+
+另一个声明全局变量的方式是 =defvar=, 它是更多时候是包开发者用的. 语法是 =(defvar <SYM> [INIT_VAL] [DOCSTRING])= 方括号内容是可选项. DOCSTRING是对这个全局变量进行说明, 即变量注释写在代码里面. 这样就提供了一个统一的方式让emacs可以找到一个全局变量的用法注释. =defvar= 表达式的返回值是声明的这个符号.
+**** 局部变量
+使用 =let= 表达式声明若干局部变量. 语法如下:
+#+begin_src emacs-lisp
+  ;;; (let (<VAL1> <VAL2> <etc>) <bodys>)
+    (let (a b)
+      (setq a 1)
+      (setq b 2)
+      (message a)
+      )
+  ;  (message a)
+#+end_src
+let声明的变量(符号)只能在let表达式内部使用, 因为elisp的作用域看括号. 在body中把符号a绑定到值1上, 最后打印在mini buffer上. let表达式的返回值是bodys的返回值.
+*** 函数和lambda表达式
+在elisp中, 函数其实和普通的对象(如1,"hello world")一样. 如果读者接触过如Scala, Haskell, OCaml等函数式语言那么就知道这是什么. 如果没有了解过也不影响下面的介绍. 
+#+begin_src emacs-lisp
+  ;;; 在Emacs-Lisp中定义一个函数的语法如下
+  ;;; (defun <func_name>
+  ;;;   (<param1> <param2> <etc>)
+  ;;;   [docstring]
+  ;;; <bodys>)
+  ;;; 例如
+  (defun add_one (x) "add-one" (+ x 1))
+  (message (add_one 1))
+#+end_src
+而所谓的lambda表达式指的是匿名函数(anonymous function), 它是lambda演算的概念. 其语法如下:
+#+begin_src emacs-lisp
+  ;;; (lambda (<param1> <etc>)
+  ;;;   [docstring]
+  ;;;   [interactive-clause]
+  ;;;   <bodys>)
+  ;;; 例如
+  (fset f (lambda (x y) (+ x y)))
+  (f 1 1)
+#+end_src
+在lambda演算中, lambda表达式只有一个入参, 它通过高阶函数和柯里化的方式实现多入参函数. 但在elisp中提供了更方便的实现多元函数的方式.
+**** 布尔运算和条件判断
+在lisp中, 条件判断也是一个表达式, 类似于C/C++中的三元运算符. 但不同的是, lisp是动态语言, 类型在运行期判断, 所以在条件表达式中, 你的返回值可以是不同类型的. 在elisp中, 符号 ='t=, 全局变量 =t= 或值为它们的表达式表示真; 符号 ='nil=, 全局变量 =nil= 或任何值为这两个的表达式表示假. 在C/C++中, 0是假, 而在elisp中, 空列表(list)为假, 而其余对象为真.
+#+begin_src emacs-lisp
+  ;;; (if <bool-expr> <true-expr> <false-expr>)
+  ;; All false
+  (if nil "yes" "no")
+  (if (= 1 2) "yes" "no")
+  (if ('() "yes" "no")); void list
+  ;; All true
+  (if t "yes" "no")
+  (if 0 "yes" "no")
+  (if "" "yes" "no")
+  (if [] "yes" "no"); vector with 0 element
+#+end_src
+且为 =and=, 或为 =or=, 非为 =not=, 相等为 === 或 =eq=.
+**** 字符与字符串
+想表示单个字符使用 =?a= 表示 ='a'= ,使用 =?\n= 表示 ='\n'= .在emacs中, 还有控制字符的概念, 即类似于 =C-h= 这种控制键+一个字符的组合. 控制字符有多种表示方式, 如 =C-h= , =M-x= 可以表示为 =?\C-H=, =?\M-x= 字符的大小写没有限制.
+**** elisp数据结构
+这里我们只介绍List和Cons Cell.
+
+先讲List. List可以把储存有限个元素(不需要同类型)到一个对象中. 声明一个list很简单, 只需要
+#+begin_src emacs-lisp
+  (list <VAL1> <etc>)
+  ;;; 或更简单的
+  (<VAL1> <etc>)
+#+end_src
+判断一个对象是否是列表使用 =(listp <VAL>)= .
+
+再讲cons cell, 实际上它是一个二元组, 第一个元素叫CAR, 第二个叫CDR. 你可能会疑惑, 为何有了list还需要一个二元组呢? 这是因为, list在emacs中不是一个基本类型, 它是通过cons cell来构造的. 一个list是一系列cons cell, 它们链接在一起, 每个cons cell的cdr 可以容纳下一个cons cell单元或空列表(单向链表的意思). =car= 函数和 =cdr= 函数可以从一个cons cell 获取元素(而不修改原来的对象). 构造一个cons cell需要如下代码
+#+begin_src emacs-lisp
+  (let (x)
+    (setq x (cons 1 "yes"))
+    (message (car x))
+    (message (cdr x))
+    )
+#+end_src
+或简单用 ='(a b)= 的方式创造. =(consp <VAL>)= 用于判断一个对象是否是cons cell. 
+
+* Emacs配置文件
+** 配置文件位置
+Emacs的配置是用Emacs-Lisp代码来控制的, 所谓的配置就是在启动时执行一段代码, 由代码来改变Emacs的行为. Emacs的配置文件默认在四个位置搜索其配置文件, 它会按顺序在如下地方搜索.
+1. ~/.emacs
+2. ~/.emacs.el
+3. ~/.emacs.d/init.el
+4. ~/.config/emacs/init.el
+只要找到了就不会在其他地方找配置文件了. 我们推荐采用第三种配置方法. 注意, 配置文件一般不会自动生成. 所以需要你自行新建文件夹和文件.
+** 基础配置
+不管是否采用我的建议, 接下来的配置只会写在一个文件里面, 所以请按照自己的实际填写配置吧.
+
+我们开启一些简单的功能.
+#+begin_src emacs-lisp
+  ;;; basic setting
+  (electric-pair-mode t) ;Brackets autocomplete
+  (add-hook 'prog-mode-hook #'show-paren-mode);In programming mode, the cursor highlights a pair of brackets; if the cursor is in one of the brackets
+  (setq inhibit-startup-message t);close welcome page
+
+#+end_src
+第一个开启自动括号补全. 第二个在编程环境下, 若光标在一个括号上, 也同时高亮与其成对的那一个括号. 第三个关闭启动时的欢迎界面(特别是你有桌面环境的时候, 你通常是用鼠标打开一个项目的文件, 然后开始工作). 
+** Emacs自带的包管理器--package.el和它的软件源ELPA
+Liunx用户安装软件通常会在自己操作系统的软件源用系统包管理器管理. 但对于Emacs而言, 它的所有插件都是源代码, 都是在本地编译或运行的(为了效率, elisp会编译成C), 而编译链接执行不需要额外权限. 这一点就更推荐你使用自带包管理器安装插件而不是系统包管理器. 另外, ELPA有很多种, 它们的区别大致是:
+1. 是否是滚动更新
+2. 面向用户还是面向开发
+
+
+既然是软件源自然会遇到网络问题, 对于一般用户, 通过换源就可以解决问题. 参阅[[https://mirrors.tuna.tsinghua.edu.cn/help/elpa/]] . 你也可以选择其他镜像站, 如腾讯的. 
+#+begin_src emacs-lisp
+  (require 'package)
+  (setq package-archives '(("gnu"    . "http://mirrors.tuna.tsinghua.edu.cn/elpa/gnu/")
+			   ("nongnu" . "http://mirrors.tuna.tsinghua.edu.cn/elpa/nongnu/")
+			   ("melpa"  . "http://mirrors.tuna.tsinghua.edu.cn/elpa/melpa/")))
+  (package-initialize) ;; You might already have this line
+
+#+end_src
+上面提到的三个ELPA是最推荐使用的. gnu源是必备的, 因为有很多其他源的插件会依赖这个源的基础插件. melpha是滚动更新的, 收录了最多的包. nongnu类似melpa, 但是Emacs官方维护的.
+** 最基础的补全插件和包管理插件
+使用 =M-x package-install RET package-name RET= 即可安装插件. 我们先来安装两个最基本的补全插件. emacs提供的补全需要使用 TAB键触发, 当有多个选择时会产生一个小frame显示.
+
+我们安装两个插件提升补全感受: company([[https://company-mode.github.io/]])和ivy(ivy是三个插件的集合[[https://github.com/abo-abo/swiper]]). company会从一些区域(本地)获取你可能使用的词汇, 比如记录你使用过的词汇(对中文较差, 因为它是按空格和标点分词汇的, 一段中文经常被当成一个词汇), 从lsp获取等获取可能用到的代码等, 如果触发, 则在光标旁显示一个小列表, 用和Emacs本体同款上下行快捷键上下选择.这个列表在文字终端也可以使用. 相当多的后续配置围绕这个补全插件, 基本属于必装. ivy则是一个用于mini buffer 补全的插件.
+
+这两个插件的基础使用基本是开箱即用的. 配置见它们的项目网站(照抄). 但在配置之前, 还需要再介绍一个插件-- /use-package/ . 这个插件是用于模块化插件设置的. 我不打算系统介绍这个插件, 而是涉及到哪部分就介绍哪部分, 它相对来说比较"纯粹". 
+#+begin_src emacs-lisp
+  ;;; loading use-package first
+  (eval-when-compile
+    (require 'use-package))
+
+  ;;; set ivy
+  (use-package ivy
+    :ensure t;make sure the package installed
+    :diminish ivy-mode
+    :hook (after-init . ivy-mode)
+    )
+  ;;; set company
+  (use-package company
+    :ensure t
+    :hook (after-init . global-company-mode)
+    :config
+    (setq company-minimum-prefix-length 1)
+    )
+#+end_src
+第一句指示检查use-package是否安装. =:ensure t= 指若没找到这个包, 则用 =M-x package-install= 安装. 这样, 你迁移设置到新设备的时候就不需要自己手动安装了. =:hook= 就是 =(add-hook a b)= 的意思, hook 指示触发a事件之后连带触发b. =:config= 指的是这个插件启动后执行的内容, 与之对应的是 =:init= 指的是那些在执行插件前执行的内容, 通常你可以把hook的内容放在 =:init= . 详情参阅[[https://github.com/jwiegley/use-package]] .  
+
+** Emacs主题安装
+相比自己手动一点点啃官方Manual设置样式, 使用别人已经设计好的主题是一个更省时省力的选择. [[https://emacsthemes.com/]]这个网站收录了非常多主题. 不同的主题配置的东西数量不同, 我比较推荐使用Doom Emacs或Spacemacs的主题. 这些主题大部分在melpa中, 使用 =M-x package-install= 安装后, 可以手动选择主题: =M-x load-theme RET theme-name RET= . 我们知道M-x 其实是调用一个函数而已, 所以你可以在启动emacs时运行这个命令. 例如: 
+#+begin_src emacs-lisp
+  (use-package spacemacs-theme
+    :ensure t
+    :config
+    (load-theme 'spacemacs-light t)
+    )
+#+end_src
+推荐使用别人充分设计过的主题, 特别是那些广受使用, 大量人员参与贡献的有个好处, 就是它们通常会把org-mode等也设置好. 免去后续很多麻烦. 
+
+
+
+
